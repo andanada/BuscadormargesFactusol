@@ -214,7 +214,7 @@ function fila(item) {
     config.append(usar);
   }
 
-  return el(
+  const tr = el(
     'tr',
     {},
     el('td', { class: 'c' }, check),
@@ -236,6 +236,57 @@ function fila(item) {
     pvp,
     el('td', {}, boto),
   );
+  activarTip(tr, item);
+  return tr;
+}
+
+// ---------- Targeta flotant: preu de les altres tarifes en passar el cursor per un article ----------
+function activarTip(tr, item) {
+  tr.addEventListener('mouseenter', (e) => {
+    pintarTip(item);
+    posicionarTip(e);
+  });
+  tr.addEventListener('mousemove', posicionarTip);
+  tr.addEventListener('mouseleave', () => {
+    $('tip').hidden = true;
+  });
+}
+
+function pintarTip(item) {
+  const tip = $('tip');
+  const blocs = [el('div', { class: 'tip-art', text: `${item.codart} · ${item.desart}` })];
+  if (!item.otras?.length) {
+    blocs.push(el('div', { class: 'tip-det', text: 'Sense preu a les altres tarifes.' }));
+  }
+  for (const o of item.otras ?? []) {
+    const sense = o.incluyeIva ? o.pvpSinIva : o.pvpAlmacenado;
+    const amb = o.incluyeIva ? o.pvpAlmacenado : rodona2(o.pvpAlmacenado * (1 + o.ivaPct / 100));
+    blocs.push(
+      el(
+        'div',
+        { class: 'tip-tarifa' },
+        el('div', { class: 'tip-nom', text: o.nombre }),
+        el('div', { class: 'tip-pvp', text: `${fmt.format(o.pvpAlmacenado)} € ${o.incluyeIva ? 'amb IVA' : 'sense IVA'}` }),
+        el('div', { class: 'tip-det', text: `Sense IVA ${fmt.format(sense)} € · amb IVA ${fmt.format(amb)} € (${o.ivaPct} %)` }),
+        el('div', { class: `tip-det ${o.margenReal < 0 ? 'neg' : ''}`, text: `Marge real ${fmt.format(o.margenReal)} %` }),
+      ),
+    );
+  }
+  tip.replaceChildren(...blocs);
+  tip.hidden = false;
+}
+
+function posicionarTip(e) {
+  const tip = $('tip');
+  if (tip.hidden) return;
+  const marge = 16;
+  const amplada = tip.offsetWidth;
+  const alcada = tip.offsetHeight;
+  // A la dreta i sota del cursor; si no hi cap, a l'esquerra o a sobre.
+  const x = e.clientX + marge + amplada > window.innerWidth ? e.clientX - marge - amplada : e.clientX + marge;
+  const y = e.clientY + marge + alcada > window.innerHeight ? e.clientY - marge - alcada : e.clientY + marge;
+  tip.style.left = `${Math.max(4, x)}px`;
+  tip.style.top = `${Math.max(4, y)}px`;
 }
 
 // Marge real de l'article a les altres tarifes (informatiu): una línia per tarifa, p. ex. "T1 25,30 %".

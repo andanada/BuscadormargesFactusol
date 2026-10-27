@@ -33,6 +33,8 @@ Variables opcionales: `PORT` (4100), `TARIFAS_ESCRIBIBLES` (por defecto `1,2`; l
 - Por fila: estoc (suma de almacenes, `F_STO.DISSTO`), cost brut (`PCOART`),
   descuento de compra de la ficha (`DT0ART..DT2ART`), cost net, PVP actual, margen real, margen
   configurado (`MARLTA`, con botón ← para copiarlo si está desfasado), nuevo margen, nuevo PVP.
+- **Al pasar el cursor por un artículo** sale una tarjeta con el PVP de la **otra tarifa** (tal como se
+  guarda, y con/sin IVA) y su margen real, para comparar el precio de la Tarifa 1 y la Associaciones.
 - Etiquetas: *Descatalogat* (`REFART` empieza por "Descatalogado"), *revisa dtes.* (más de un descuento).
 - Buscador por código/nombre, marcar varias filas, "Posa el mateix marge als marcats".
 

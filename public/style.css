@@ -110,6 +110,14 @@ dialog { border: 1px solid var(--linia); border-radius: 14px; padding: 22px; bac
 dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .botons { display: flex; justify-content: flex-end; gap: 10px; }
 
+.tip { position: fixed; z-index: 20; pointer-events: none; min-width: 230px; max-width: 320px; padding: 10px 12px; border-radius: var(--radi); background: var(--panel); border: 1px solid var(--linia); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); font-size: 13px; }
+.tip[hidden] { display: none; }
+.tip .tip-art { color: var(--tinta-2); font-size: 12px; margin-bottom: 6px; }
+.tip .tip-tarifa + .tip-tarifa { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--linia); }
+.tip .tip-nom { font-weight: 600; }
+.tip .tip-pvp { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.tip .tip-det { color: var(--tinta-2); font-variant-numeric: tabular-nums; }
+.tip .tip-det.neg { color: var(--neg); font-weight: 600; }
 .toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 10; max-width: 420px; }
 .toast { padding: 10px 14px; border-radius: var(--radi); background: var(--panel); border: 1px solid var(--linia); border-left: 4px solid var(--ok); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); }
 .toast.error { border-left-color: var(--neg); }

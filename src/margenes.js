@@ -115,7 +115,16 @@ export function listaPorTarifa(datos, tarifaCodigo) {
     item.otras = otrasTarifas.flatMap((t) => {
       const otraLinea = lineaDe.get(`${linea.ARTLTA}|${t.codigo}`);
       const otro = otraLinea && construirItem(otraLinea, articulo, t).item;
-      return otro ? [{ codigo: t.codigo, nombre: t.nombre, margenReal: otro.margenReal, pvpAlmacenado: otro.pvpAlmacenado }] : [];
+      if (!otro) return [];
+      return [{
+        codigo: t.codigo,
+        nombre: t.nombre,
+        margenReal: otro.margenReal,
+        pvpAlmacenado: otro.pvpAlmacenado, // tal cual se guarda en esa tarifa
+        pvpSinIva: otro.pvpSinIva,
+        incluyeIva: otro.incluyeIva,
+        ivaPct: otro.ivaPct,
+      }];
     });
     items.push(item);
   }

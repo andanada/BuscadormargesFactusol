@@ -110,7 +110,10 @@ test('listaPorTarifa lleva el stock del artículo (o null si no tiene filas en F
 
 test('cada fila lleva el margen real de las otras tarifas del mismo artículo', () => {
   const r2 = listaPorTarifa(cargado(escenario()), 2);
-  assert.deepEqual(r2.items[0].otras, [{ codigo: 1, nombre: 'Tarifa 1', margenReal: 1.9, pvpAlmacenado: 199 }]); // 199 con IVA = 164,46 sin IVA
+  // 199 con IVA = 164,46 sin IVA (IVA 21 %): el panel enseña los dos al pasar el cursor
+  assert.deepEqual(r2.items[0].otras, [
+    { codigo: 1, nombre: 'Tarifa 1', margenReal: 1.9, pvpAlmacenado: 199, pvpSinIva: 164.46, incluyeIva: true, ivaPct: 21 },
+  ]);
   const r1 = listaPorTarifa(cargado(escenario()), 1);
   const o = r1.items.find((i) => i.codart === '3342').otras;
   assert.equal(o.length, 1);
