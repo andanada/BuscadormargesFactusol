@@ -87,6 +87,9 @@ tr.fet { opacity: 0.55; }
 .nom { min-width: 260px; }
 .etiqueta { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; background: var(--bg); color: var(--tinta-2); border: 1px solid var(--linia); white-space: nowrap; }
 .etiqueta.av { background: var(--av-suau); color: var(--av); border-color: transparent; }
+.altra { font-variant-numeric: tabular-nums; color: var(--tinta-2); white-space: nowrap; }
+.altra.neg { color: var(--neg); font-weight: 600; }
+.altra.baix { color: var(--av); }
 .amb-dte { color: var(--accent); font-weight: 600; }
 .sense-dte { color: var(--tinta-2); }
 .estoc-ok { font-weight: 600; }

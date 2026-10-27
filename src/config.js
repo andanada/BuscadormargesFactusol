@@ -30,9 +30,10 @@ export function cargarConfig() {
     // en un ejercicio equivocado sin darse cuenta.
     ejercicio: vars.DELSOL_EJERCICIO ?? String(new Date().getFullYear()),
     puerto: Number(process.env.PORT ?? 4100),
-    // Tarifas en las que se permite ESCRIBIR. Por defecto solo la 2 (Associaciones): la Tarifa 1
-    // usa precios puestos a mano (MARLTA = 0 en casi todo) y su cálculo por margen no está validado.
-    tarifasEscribibles: new Set((process.env.TARIFAS_ESCRIBIBLES ?? '2').split(',').map(Number).filter(Number.isInteger)),
+    // Tarifas en las que se permite ESCRIBIR (por defecto la 1 y la 2). La Tarifa 1 guarda el PVP
+    // con IVA y casi todos sus precios están puestos a mano (MARLTA = 0): al escribir un margen
+    // se calcula el PVP con IVA desde el coste neto, igual que hace el matcher de Hortitec.
+    tarifasEscribibles: new Set((process.env.TARIFAS_ESCRIBIBLES ?? '1,2').split(',').map(Number).filter(Number.isInteger)),
     rutaCopias: join(RAIZ, 'data', 'copias'),
     rutaHistorial: join(RAIZ, 'data', 'historial.jsonl'),
     raiz: RAIZ,

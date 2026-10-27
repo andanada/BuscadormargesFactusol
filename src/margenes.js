@@ -99,15 +99,25 @@ export function listaPorTarifa(datos, tarifaCodigo) {
   const descartados = { sin_articulo: 0, sin_coste: 0, iva_desconocido: 0 };
   const items = [];
   let evaluados = 0;
+  const lineaDe = new Map(datos.lineas.map((l) => [`${l.ARTLTA}|${Number(l.TARLTA)}`, l]));
+  const otrasTarifas = [...datos.tarifas.values()].filter((t) => t.codigo !== tarifaCodigo);
   for (const linea of datos.lineas) {
     if (Number(linea.TARLTA) !== tarifaCodigo) continue;
-    const { item, descartado } = construirItem(linea, datos.articulos.get(linea.ARTLTA), tarifa, datos.stock?.get(linea.ARTLTA) ?? null);
+    const articulo = datos.articulos.get(linea.ARTLTA);
+    const { item, descartado } = construirItem(linea, articulo, tarifa, datos.stock?.get(linea.ARTLTA) ?? null);
     if (descartado) {
       descartados[descartado]++;
       continue;
     }
     evaluados++;
-    if (item.tramo) items.push(item);
+    if (!item.tramo) continue;
+    // Margen de las demás tarifas del mismo artículo: solo informativo, para ver las dos a la vez.
+    item.otras = otrasTarifas.flatMap((t) => {
+      const otraLinea = lineaDe.get(`${linea.ARTLTA}|${t.codigo}`);
+      const otro = otraLinea && construirItem(otraLinea, articulo, t).item;
+      return otro ? [{ codigo: t.codigo, nombre: t.nombre, margenReal: otro.margenReal, pvpAlmacenado: otro.pvpAlmacenado }] : [];
+    });
+    items.push(item);
   }
   items.sort((a, b) => a.margenReal - b.margenReal);
   const conteo = Object.fromEntries(TRAMOS.map((t) => [t.id, items.filter((i) => i.tramo === t.id).length]));
@@ -160,7 +170,8 @@ export async function aplicarMargen({ delsol, historial, solicitud, esperaMs = 6
     );
   }
   const ratio = item.pvpAlmacenado > 0 ? pvpNuevo / item.pvpAlmacenado : Infinity;
-  if (!forzar && (ratio > RATIO_MAX_PVP || ratio < 1 / RATIO_MAX_PVP)) {
+  // Sin precio actual (PVP 0 = línea aún sin tarifar) no hay referencia contra la que medir un salto.
+  if (!forzar && item.pvpAlmacenado > 0 && (ratio > RATIO_MAX_PVP || ratio < 1 / RATIO_MAX_PVP)) {
     throw new ErrorDeValidacion(
       `El cambio mueve el PVP de ${item.pvpAlmacenado} a ${pvpNuevo} (x${ratio.toFixed(1)}). Parece un error: confírmalo expresamente si es correcto.`,
     );

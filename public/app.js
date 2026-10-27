@@ -187,13 +187,31 @@ function fila(item) {
     el('td', { class: 'n', text: fmt.format(item.costeBruto) }),
     celaDte,
     el('td', { class: 'n', text: fmt.format(item.costeNeto) }),
-    el('td', { class: 'n', text: fmt.format(item.pvpAlmacenado) }),
+    el('td', {
+      class: 'n',
+      text: fmt.format(item.pvpAlmacenado),
+      title: item.incluyeIva ? `Amb IVA (${item.ivaPct} %). Sense IVA: ${fmt.format(item.pvpSinIva)}` : 'Sense IVA',
+    }),
     el('td', { class: `n marge ${classeMarge}`, text: `${fmt.format(item.margenReal)} %` }),
     config,
+    celaAltres(item),
     el('td', { class: 'n' }, entrada),
     pvp,
     el('td', {}, boto),
   );
+}
+
+// Marge real de l'article a les altres tarifes (informatiu): una línia per tarifa, p. ex. "T1 25,30 %".
+function celaAltres(item) {
+  const cela = el('td', { class: 'n altres' });
+  if (!item.otras?.length) cela.textContent = '—';
+  for (const o of item.otras ?? []) {
+    const classe = o.margenReal < 0 ? 'neg' : o.margenReal < 20 ? 'baix' : '';
+    cela.append(
+      el('div', { class: `altra ${classe}`, title: `${o.nombre}: PVP ${fmt.format(o.pvpAlmacenado)}`, text: `T${o.codigo} ${fmt.format(o.margenReal)} %` }),
+    );
+  }
+  return cela;
 }
 
 const fmtEstoc = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 3 });

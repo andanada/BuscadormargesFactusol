@@ -102,6 +102,16 @@ test('listaPorTarifa lleva el stock del artículo (o null si no tiene filas en F
   assert.equal(listaPorTarifa(cargado(escenario()), 2).items[0].stock, null);
 });
 
+test('cada fila lleva el margen real de las otras tarifas del mismo artículo', () => {
+  const r2 = listaPorTarifa(cargado(escenario()), 2);
+  assert.deepEqual(r2.items[0].otras, [{ codigo: 1, nombre: 'Tarifa 1', margenReal: 1.9, pvpAlmacenado: 199 }]); // 199 con IVA = 164,46 sin IVA
+  const r1 = listaPorTarifa(cargado(escenario()), 1);
+  const o = r1.items.find((i) => i.codart === '3342').otras;
+  assert.equal(o.length, 1);
+  assert.equal(o[0].codigo, 2);
+  assert.equal(o[0].margenReal, -18);
+});
+
 test('listaPorTarifa usa el coste neto: el 617253 no sale como negativo', () => {
   const r = listaPorTarifa(cargado(escenario()), 2);
   assert.equal(r.conteo.negativo, 1);
@@ -149,6 +159,14 @@ test('rechaza márgenes inválidos, CODART raro y saltos x3 sin forzar', async (
   await assert.rejects(aplicar(delsol, historialFalso(), { ...SOL, pvpNuevoEsperado: undefined }), /Faltan los PVP/);
   await assert.rejects(aplicar(delsol, historialFalso(), { ...SOL, nuevoMargen: 300, pvpNuevoEsperado: pvpAlmacenadoParaMargen(161.4, 300, false, 21) }), /Parece un error/);
   assert.equal(delsol.escrituras.length, 0);
+});
+
+test('una línea sin precio (PVP 0) se puede tarifar: no hay referencia para el límite x3', async () => {
+  const e = escenario();
+  e.lineas.find((l) => l.ARTLTA === '3342' && l.TARLTA === 2).PRELTA = 0;
+  const delsol = crearFactusol(e);
+  await aplicar(delsol, historialFalso(), { ...SOL, pvpAntesEsperado: 0 });
+  assert.equal(delsol.escrituras[0].prelta, 193.68);
 });
 
 test('el margen se redondea a 2 decimales antes de escribir', async () => {
