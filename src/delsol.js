@@ -66,6 +66,16 @@ export class DelsolClient {
     return filas.map((fila) => Object.fromEntries(fila.map(({ columna, dato }) => [columna, dato])));
   }
 
+  /** Escribe SOLO el PVP (PRELTA) de una línea de tarifa existente, sin tocar su margen (MARLTA). */
+  async actualizarPrecioLinea(codart, tarifa, prelta) {
+    const registro = [
+      { columna: 'ARTLTA', dato: codart },
+      { columna: 'TARLTA', dato: tarifa },
+      { columna: 'PRELTA', dato: prelta },
+    ];
+    return this.#post('/admin/ActualizarRegistro', { ejercicio: this.ejercicio, tabla: 'F_LTA', registro }, { reintentar401: false });
+  }
+
   /** Escribe margen y PVP de UNA línea de tarifa existente (F_LTA). */
   async actualizarLineaTarifa(codart, tarifa, marlta, prelta) {
     const registro = [

@@ -11,7 +11,7 @@ Repo: https://github.com/andanada/BuscadormargesFactusol.git · Estado a 2026-10
 
 ```
 iniciar.bat                      # arranca y abre http://127.0.0.1:4100/
-npm test                         # 28 tests (node:test, sin dependencias de test)
+npm test                         # 35 tests (node:test, sin dependencias de test)
 ```
 
 Credenciales: variables `DELSOL_CODIGO_FABRICANTE`, `DELSOL_CODIGO_CLIENTE`,
@@ -19,13 +19,17 @@ Credenciales: variables `DELSOL_CODIGO_FABRICANTE`, `DELSOL_CODIGO_CLIENTE`,
 en curso) en un `.env` de esta carpeta, o en el fichero que indique `FACTUSOL_ENV_FILE`
 (`iniciar.bat` usa el del matcher si no hay `.env` propio). No hay fallback silencioso.
 
-Variables opcionales: `PORT` (4100), `TARIFAS_ESCRIBIBLES` (por defecto `1,2`; las demás quedan en solo lectura).
+Variables opcionales: `PORT` (4100), `TARIFAS_ESCRIBIBLES` (por defecto `1,2`; las demás quedan en solo lectura),
+`TARIFAS_POR_PRECIO` (por defecto `1`: esas tarifas se editan con precio directo; el resto con margen).
 
 ## Qué muestra
 
 - Pestañas por tramo de margen real: **Negatius**, **0–10 %**, **10–15 %**, **15–20 %** e **Historial**.
-- Selector de tarifa (se puede **ver y editar el margen de la Tarifa 1 y de la 2**); la columna
-  "Altres tarifes" enseña el margen real del mismo artículo en las otras tarifas (informativo).
+- Selector de tarifa. **Dos modos de edición**: la **Tarifa 2 (Associaciones) se edita por margen** (el
+  programa calcula el PVP) y la **Tarifa 1 por precio directo** (se teclea el PVP con IVA y el panel
+  enseña el margen resultante; solo se escribe `PRELTA`, `MARLTA` no se toca). Cada tarifa solo
+  acepta su modo (el servidor rechaza el otro). La columna "Altres tarifes" enseña el margen real del
+  mismo artículo en las otras tarifas (informativo).
 - Por fila: estoc (suma de almacenes, `F_STO.DISSTO`), cost brut (`PCOART`),
   descuento de compra de la ficha (`DT0ART..DT2ART`), cost net, PVP actual, margen real, margen
   configurado (`MARLTA`, con botón ← para copiarlo si está desfasado), nuevo margen, nuevo PVP.
@@ -47,13 +51,12 @@ Variables opcionales: `PORT` (4100), `TARIFAS_ESCRIBIBLES` (por defecto `1,2`; l
    en "0–10 %" que en realidad estaban al 10 % exacto).
 6. Validación de la fórmula contra FactuSOL real (solo lectura): en la Tarifa 2, 4.363 de 4.575
    líneas (95,4 %) dan el PVP exacto (±0,015 €); los 212 restantes son precios movidos a mano.
-7. **Tarifa 1**: casi todas sus líneas tienen `MARLTA = 0` (precios puestos a mano, p. ej. 199 €),
-   así que la fórmula por margen no se puede contrastar con sus datos como en la Tarifa 2. Se editó
-   (2026-10-27) porque el usuario lo pidió; usa la misma fórmula que el matcher, confirmada en real el
-   2026-08-03: PVP guardado = `neto × (1+margen) × (1+IVA)`. Al escribir un margen se pierde el precio
-   "redondo" puesto a mano (199 → 234,35 …).
-8. Dos líneas de la Tarifa 1 tienen PVP 0 (sin tarifar: 94379, 94683) y salen como −100 %. Para
-   poder tarifarlas, el límite ×3 de cambio de PVP solo se aplica cuando ya hay un precio.
+7. **Tarifa 1**: casi todas sus líneas tienen `MARLTA = 0`: los precios se ponen **a mano, no por
+   margen** (decisión del usuario, 2026-10-27: "la tarifa 1 no la hago con margen sino con precio
+   directo"). Por eso se edita con precio directo: se escribe solo `PRELTA` (PVP con IVA, 2 decimales)
+   y el margen real resultante se calcula y se muestra. Margen real T1 = `(PVP/(1+IVA) − neto)/neto`.
+8. Las líneas con PVP 0 (sin tarifar) salen como −100 %. Para poder tarifarlas, el límite ×3 de cambio
+   de PVP solo se aplica cuando ya hay un precio.
 
 ## Seguridad y fiabilidad al escribir
 
@@ -112,9 +115,11 @@ data/              historial y copias (NO se versiona)
 - [ ] Decidir y aplicar márgenes a los artículos bajo el 20 % (datos del 2026-10-27, Tarifa 2):
       33 en 0–10 %, 261 en 10–15 %, 1.169 en 15–20 % (la mayoría es el 15 % por defecto de la tarifa).
       Candidatos claros (margen configurado > real): 799031, 781538 y similares; el 911999 ya no sale en la tarifa.
-- [ ] **Tarifa 1 editable pero sin ninguna escritura real probada desde este programa**: hacer el piloto
-      también en ella (comprobando a mano en FactuSOL que el PVP con IVA es el esperado) y decidir qué
-      hacer con sus precios "redondos" puestos a mano. Tarifar las 2 líneas con PVP 0 (94379, 94683).
+- [ ] **Tarifa 1 por precio directo, sin ninguna escritura real probada desde este programa**: hacer el
+      piloto también en ella (comprobar a mano en FactuSOL que el PVP con IVA es el tecleado y que
+      "Desfés" lo restaura). El método de escritura (`ActualizarRegistro` F_LTA con solo ARTLTA,
+      TARLTA, PRELTA) es el mismo que usa el matcher en producción.
+- [ ] Revisar las líneas de la Tarifa 1 con PVP 0 (sin tarifar) y los artículos con margen negativo real.
 - [ ] Revisar el artículo con **más de un descuento** de compra (se combinan en cadena; sin confirmar).
 - [ ] 21 artículos sin coste (`PCOART = 0`) y 4 con stock negativo.
 - [ ] Filtro "només amb estoc", ordenar por columnas, exportar CSV, valor inmovilizado (stock × coste).

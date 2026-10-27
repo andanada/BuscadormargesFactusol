@@ -59,6 +59,31 @@ function pvpNou(item, marge) {
   return item.incluyeIva ? rodona2(sense * (1 + item.ivaPct / 100)) : sense;
 }
 
+// Cada tarifa s'edita amb un mode: "marge" (el programa calcula el PVP) o "preu" (el PVP es posa directe,
+// tal com es guarda a la tarifa: amb IVA a la Tarifa 1, i el marge és només el resultat).
+const modePreu = () => estat.llista?.modo === 'precio';
+
+const parsePreu = (text) => {
+  const t = String(text ?? '').trim().replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null; // màxim 2 decimals
+  const n = Number(t);
+  return n > 0 && n <= 100000 ? n : null;
+};
+const parseEdicio = (text) => (modePreu() ? parsePreu(text) : parseMarge(text));
+
+/** PVP i marge real que resultarien de l'edició (mateix càlcul que el servidor). */
+function previsio(item, valor) {
+  if (!modePreu()) return { pvp: pvpNou(item, valor), marge: valor };
+  const sense = item.incluyeIva ? rodona2(valor / (1 + item.ivaPct / 100)) : valor;
+  return { pvp: valor, marge: rodona2(((sense - item.costeNeto) / item.costeNeto) * 100) };
+}
+
+const textPrevisio = (item, valor) => {
+  if (valor === null) return '—';
+  const p = previsio(item, valor);
+  return modePreu() ? `${fmt.format(p.marge)} %` : fmt.format(p.pvp);
+};
+
 const itemsVisibles = () => {
   const q = estat.cerca.trim().toLowerCase();
   return estat.llista.items.filter((i) => i.tramo === estat.tram && (!q || i.codart.toLowerCase().includes(q) || i.desart.toLowerCase().includes(q)));
@@ -72,6 +97,10 @@ async function carregar() {
     const llista = await api(`/api/lista?tarifa=${estat.tarifa}`);
     if (meva !== peticioCarrega) return; // una càrrega més nova ha agafat el relleu
     estat.llista = llista;
+    const iva = estat.llista.tarifa.incluyeIva ? ' (amb IVA)' : '';
+    $('thNou').textContent = modePreu() ? `Nou PVP${iva}` : 'Nou marge %';
+    $('thPrev').textContent = modePreu() ? 'Marge resultant' : 'Nou PVP';
+    $('massiuCaixa').hidden = modePreu(); // "el mateix marge a tots" no té sentit si el PVP es posa directe
     const bad = estat.llista.descartados;
     const descartats = bad.sin_coste + bad.sin_articulo + bad.iva_desconocido;
     $('sub').textContent = `Exercici ${estat.llista.ejercicio} · ${estat.llista.tarifa.nombre}${estat.llista.tarifa.incluyeIva ? ' (PVP amb IVA)' : ' (PVP sense IVA)'} · ${estat.llista.evaluados} articles avaluats` +
@@ -133,8 +162,8 @@ function pintarLlista() {
 }
 
 function fila(item) {
-  const marge = parseMarge(estat.edicions.get(item.codart));
-  const desfasat = Math.abs(item.margenConfigurado - item.margenReal) > 1;
+  const valor = parseEdicio(estat.edicions.get(item.codart));
+  const desfasat = !modePreu() && Math.abs(item.margenConfigurado - item.margenReal) > 1;
 
   const nom = el('td', { class: 'nom' }, item.desart);
   if (item.descatalogado) nom.append(el('span', { class: 'etiqueta av', text: 'Descatalogat' }));
@@ -150,19 +179,27 @@ function fila(item) {
     actualitzarMarcats();
   });
 
-  const entrada = el('input', { class: 'nou', type: 'text', inputMode: 'decimal', placeholder: '%', value: estat.edicions.get(item.codart) ?? '', disabled: nomesLectura, ariaLabel: `Nou marge de ${item.codart}` });
-  const pvp = el('td', { class: 'n', text: marge === null ? '—' : fmt.format(pvpNou(item, marge)) });
-  const boto = el('button', { class: 'petit secundari', type: 'button', text: 'Aplica', disabled: nomesLectura || marge === null });
+  const entrada = el('input', {
+    class: 'nou',
+    type: 'text',
+    inputMode: 'decimal',
+    placeholder: modePreu() ? '€' : '%',
+    value: estat.edicions.get(item.codart) ?? '',
+    disabled: nomesLectura,
+    ariaLabel: `${modePreu() ? 'Nou PVP' : 'Nou marge'} de ${item.codart}`,
+  });
+  const pvp = el('td', { class: 'n', text: textPrevisio(item, valor) });
+  const boto = el('button', { class: 'petit secundari', type: 'button', text: 'Aplica', disabled: nomesLectura || valor === null });
   entrada.addEventListener('input', () => {
     estat.edicions.set(item.codart, entrada.value);
-    const m = parseMarge(entrada.value);
+    const m = parseEdicio(entrada.value);
     entrada.classList.toggle('invalid', entrada.value.trim() !== '' && m === null);
-    pvp.textContent = m === null ? '—' : fmt.format(pvpNou(item, m));
+    pvp.textContent = textPrevisio(item, m);
     boto.disabled = nomesLectura || m === null;
     actualitzarMarcats();
   });
   entrada.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && parseMarge(entrada.value) !== null) boto.click();
+    if (e.key === 'Enter' && parseEdicio(entrada.value) !== null) boto.click();
   });
   boto.addEventListener('click', () => confirmar([item.codart]));
 
@@ -225,7 +262,7 @@ function celaEstoc(stock) {
 }
 
 function actualitzarMarcats() {
-  const aplicables = [...estat.marcats].filter((c) => parseMarge(estat.edicions.get(c)) !== null);
+  const aplicables = [...estat.marcats].filter((c) => parseEdicio(estat.edicions.get(c)) !== null);
   const b = $('aplicarMarcats');
   b.disabled = estat.ocupat || !estat.llista.escribible || aplicables.length === 0;
   b.textContent = aplicables.length ? `Aplica els marcats (${aplicables.length})` : 'Aplica els marcats';
@@ -235,7 +272,7 @@ function actualitzarMarcats() {
 function confirmar(codarts) {
   if (estat.ocupat || !estat.llista.escribible) return;
   const items = codarts.map((c) => estat.llista.items.find((i) => i.codart === c)).filter(Boolean);
-  const canvis = items.map((item) => ({ item, marge: parseMarge(estat.edicions.get(item.codart)) })).filter((c) => c.marge !== null);
+  const canvis = items.map((item) => ({ item, valor: parseEdicio(estat.edicions.get(item.codart)) })).filter((c) => c.valor !== null);
   if (!canvis.length) return;
   if (canvis.length > MAX_TANDA) {
     return toast(`Màxim ${MAX_TANDA} canvis per tanda (n'has marcat ${canvis.length}). Fes-ho en diverses tandes.`, true);
@@ -250,15 +287,16 @@ function confirmar(codarts) {
 
   $('confTitol').textContent = canvis.length === 1 ? 'Confirma el canvi' : `Confirma ${canvis.length} canvis`;
   $('confCos').replaceChildren(
-    ...canvis.map(({ item, marge }) =>
-      el(
+    ...canvis.map(({ item, valor }) => {
+      const p = previsio(item, valor);
+      return el(
         'tr',
         {},
         el('td', { text: `${item.codart} · ${item.desart}` }),
-        el('td', { class: 'n', text: `${fmt.format(item.pvpAlmacenado)} → ${fmt.format(pvpNou(item, marge))}` }),
-        el('td', { class: 'n', text: `${fmt.format(item.margenReal)} % → ${fmt.format(marge)} %` }),
-      ),
-    ),
+        el('td', { class: 'n', text: `${fmt.format(item.pvpAlmacenado)} → ${fmt.format(p.pvp)}` }),
+        el('td', { class: `n ${p.marge < 0 ? 'estoc-neg' : ''}`, text: `${fmt.format(item.margenReal)} % → ${fmt.format(p.marge)} %` }),
+      );
+    }),
   );
   const dialeg = $('confirmacio');
   dialeg.returnValue = '';
@@ -278,20 +316,24 @@ async function escriure(canvis) {
   const progres = $('progres');
   progres.hidden = false;
   $('atura').disabled = false;
-  for (const [i, { item, marge }] of canvis.entries()) {
+  for (const [i, { item, valor }] of canvis.entries()) {
     if (estat.aturar) {
       aturat = true;
       break;
     }
     $('progresText').textContent = `Escrivint a Factusol… ${i + 1} de ${canvis.length} (${item.codart})`;
     try {
-      await api('/api/aplicar', {
-        codart: item.codart,
-        tarifa: item.tarifa,
-        pvpAntesEsperado: item.pvpAlmacenado,
-        pvpNuevoEsperado: pvpNou(item, marge),
-        nuevoMargen: marge,
-      });
+      if (modePreu()) {
+        await api('/api/aplicar-precio', { codart: item.codart, tarifa: item.tarifa, pvpAntesEsperado: item.pvpAlmacenado, pvpNuevo: valor });
+      } else {
+        await api('/api/aplicar', {
+          codart: item.codart,
+          tarifa: item.tarifa,
+          pvpAntesEsperado: item.pvpAlmacenado,
+          pvpNuevoEsperado: pvpNou(item, valor),
+          nuevoMargen: valor,
+        });
+      }
       estat.edicions.delete(item.codart);
       estat.marcats.delete(item.codart);
       fets++;
@@ -349,7 +391,9 @@ async function mostrarHistorial() {
         el('td', { class: 'codi', text: c.codart }),
         el('td', { text: c.desart }),
         el('td', { text: String(c.tarifa) }),
-        el('td', { class: 'n', text: `${fmt.format(c.antes.marlta)} → ${fmt.format(c.despues.marlta)} %` }),
+        c.tipo === 'precio'
+          ? el('td', { class: 'n sense-dte', text: 'preu directe', title: 'Només s\'ha escrit el PVP; el marge guardat no s\'ha tocat' })
+          : el('td', { class: 'n', text: `${fmt.format(c.antes.marlta)} → ${fmt.format(c.despues.marlta)} %` }),
         el('td', { class: 'n', text: `${fmt.format(c.antes.prelta)} → ${fmt.format(c.despues.prelta)}` }),
         el('td', { class: c.estado === 'aplicado' ? 'estat-aplicat' : ['verificacion_fallida', 'pendiente'].includes(c.estado) ? 'estat-fallit' : '', text }),
         el('td', {}, desfeable ? desfer : ''),

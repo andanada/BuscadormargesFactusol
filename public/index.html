@@ -35,7 +35,7 @@
         <div class="resum" id="resum"></div>
         <div class="accions">
           <label class="check"><input type="checkbox" id="totes"> Marca tots els visibles</label>
-          <span class="massiu">Posa el mateix marge als marcats
+          <span class="massiu" id="massiuCaixa">Posa el mateix marge als marcats
             <input id="massiuValor" type="text" inputmode="decimal" value="20" aria-label="Marge per als marcats"> %
             <button id="massiuAplicar" class="secundari petit" type="button">Omple</button>
           </span>
@@ -57,8 +57,8 @@
               <th class="n">Marge real</th>
               <th class="n" title="Marge guardat a Factusol (MARLTA)">Marge config.</th>
               <th class="n" title="Marge real d'aquest mateix article a les altres tarifes (només informatiu)">Altres tarifes</th>
-              <th class="n">Nou marge %</th>
-              <th class="n">Nou PVP</th>
+              <th class="n" id="thNou">Nou marge %</th>
+              <th class="n" id="thPrev">Nou PVP</th>
               <th></th>
             </tr>
           </thead>

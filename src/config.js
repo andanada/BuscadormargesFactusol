@@ -34,6 +34,9 @@ export function cargarConfig() {
     // con IVA y casi todos sus precios están puestos a mano (MARLTA = 0): al escribir un margen
     // se calcula el PVP con IVA desde el coste neto, igual que hace el matcher de Hortitec.
     tarifasEscribibles: new Set((process.env.TARIFAS_ESCRIBIBLES ?? '1,2').split(',').map(Number).filter(Number.isInteger)),
+    // Tarifas que se editan con PRECIO directo (PVP tal como se guarda) en vez de con margen.
+    // La Tarifa 1 se fija a mano (MARLTA = 0 en casi todo): ahí el margen es solo un resultado.
+    tarifasPorPrecio: new Set((process.env.TARIFAS_POR_PRECIO ?? '1').split(',').map(Number).filter(Number.isInteger)),
     rutaCopias: join(RAIZ, 'data', 'copias'),
     rutaHistorial: join(RAIZ, 'data', 'historial.jsonl'),
     raiz: RAIZ,

@@ -124,82 +124,75 @@ export function listaPorTarifa(datos, tarifaCodigo) {
   return { tarifa, evaluados, descartados, conteo, items };
 }
 
-/**
- * Aplica un nuevo margen a UNA línea de tarifa. Pasos: validar, releer en fresco, comprobar que
- * lo que vio el usuario sigue siendo cierto, escribir, releer para verificar y dejar historial.
- */
-export async function aplicarMargen({ delsol, historial, solicitud, esperaMs = 600, tarifasEscribibles = new Set() }) {
-  const { codart, tarifa, pvpAntesEsperado, pvpNuevoEsperado, nuevoMargen: margenPedido, forzar = false } = solicitud;
+const filtroLinea = (codart, tarifa) => `ARTLTA = '${codart.replace(/'/g, "''")}' AND TARLTA = ${tarifa}`;
+const PRECIO_MAX = 100_000;
+
+/** Tarifa existente, autorizada para escribir y editada con el modo que le toca (margen o precio). */
+function comprobarTarifa({ tarifa, modo, tarifasEscribibles, tarifasPorPrecio }) {
   if (!Number.isInteger(tarifa) || tarifa < 1) throw new ErrorDeValidacion('Tarifa no válida.');
   if (!tarifasEscribibles.has(tarifa)) {
     throw new ErrorDeValidacion(`La tarifa ${tarifa} está en solo lectura en este programa. Autorízala con TARIFAS_ESCRIBIBLES si de verdad quieres editarla.`);
   }
-  if (!Number.isFinite(margenPedido) || margenPedido < 0 || margenPedido > MARGEN_MAX) {
-    throw new ErrorDeValidacion(`El margen debe estar entre 0 y ${MARGEN_MAX} %.`);
-  }
-  if (!Number.isFinite(pvpAntesEsperado) || !Number.isFinite(pvpNuevoEsperado)) {
-    throw new ErrorDeValidacion('Faltan los PVP que viste en pantalla (actual y nuevo).');
-  }
-  const nuevoMargen = redondea2(margenPedido); // FactuSOL guarda el margen con 2 decimales
+  const porPrecio = tarifasPorPrecio.has(tarifa);
+  if (modo === 'margen' && porPrecio) throw new ErrorDeValidacion(`La tarifa ${tarifa} se edita con el precio directo, no con el margen.`);
+  if (modo === 'precio' && !porPrecio) throw new ErrorDeValidacion(`La tarifa ${tarifa} se edita con el margen, no con el precio directo.`);
+}
 
+/** Lee artículo y línea en fresco y comprueba que el PVP sigue siendo el que vio el usuario. */
+async function leerEnFresco({ delsol, codart, tarifa, pvpAntesEsperado }) {
   const [articulos, lineas, tarifas] = await Promise.all([
     delsol.cargaTabla('F_ART', filtroCodart(codart)),
-    delsol.cargaTabla('F_LTA', `ARTLTA = '${codart.replace(/'/g, "''")}' AND TARLTA = ${tarifa}`),
+    delsol.cargaTabla('F_LTA', filtroLinea(codart, tarifa)),
     delsol.cargaTabla('F_TAR', `CODTAR = ${tarifa}`),
   ]);
-  const articulo = articulos[0];
-  const linea = lineas[0];
-  if (!articulo) throw new ErrorDeValidacion(`El artículo ${codart} no existe en FactuSOL.`);
-  if (!linea || !tarifas[0]) throw new ErrorDeValidacion(`El artículo ${codart} no tiene línea en la tarifa ${tarifa}.`);
-
+  if (!articulos[0]) throw new ErrorDeValidacion(`El artículo ${codart} no existe en FactuSOL.`);
+  if (!lineas[0] || !tarifas[0]) throw new ErrorDeValidacion(`El artículo ${codart} no tiene línea en la tarifa ${tarifa}.`);
   const cfg = { incluyeIva: Number(tarifas[0].IVATAR) === 1 };
-  const { item, descartado } = construirItem(linea, articulo, cfg);
+  const { item, descartado } = construirItem(lineas[0], articulos[0], cfg);
   if (descartado) throw new ErrorDeValidacion(`No se puede calcular el margen de ${codart} (${descartado}).`);
   if (!cerca(item.pvpAlmacenado, pvpAntesEsperado)) {
     throw new ErrorDeValidacion(
       `El PVP de ${codart} ya no es ${pvpAntesEsperado} en FactuSOL (ahora es ${item.pvpAlmacenado}). Recarga la lista antes de continuar.`,
     );
   }
+  return { item, cfg };
+}
 
-  const pvpNuevo = pvpAlmacenadoParaMargen(item.costeNeto, nuevoMargen, cfg.incluyeIva, item.ivaPct);
-  // Si el coste (o su descuento) cambió después de cargar la lista, el PVP que saldría ya no es
-  // el que el usuario confirmó: no se escribe.
-  if (!cerca(pvpNuevo, pvpNuevoEsperado)) {
-    throw new ErrorDeValidacion(
-      `El coste de ${codart} ha cambiado en FactuSOL: con ${nuevoMargen} % el PVP sería ${pvpNuevo}, no ${pvpNuevoEsperado}. Recarga la lista antes de continuar.`,
-    );
-  }
-  const ratio = item.pvpAlmacenado > 0 ? pvpNuevo / item.pvpAlmacenado : Infinity;
+function comprobarSalto(item, pvpNuevo, forzar) {
   // Sin precio actual (PVP 0 = línea aún sin tarifar) no hay referencia contra la que medir un salto.
-  if (!forzar && item.pvpAlmacenado > 0 && (ratio > RATIO_MAX_PVP || ratio < 1 / RATIO_MAX_PVP)) {
+  if (forzar || !(item.pvpAlmacenado > 0)) return;
+  const ratio = pvpNuevo / item.pvpAlmacenado;
+  if (ratio > RATIO_MAX_PVP || ratio < 1 / RATIO_MAX_PVP) {
     throw new ErrorDeValidacion(
       `El cambio mueve el PVP de ${item.pvpAlmacenado} a ${pvpNuevo} (x${ratio.toFixed(1)}). Parece un error: confírmalo expresamente si es correcto.`,
     );
   }
+}
 
-  const antes = { marlta: item.margenConfigurado, prelta: item.pvpAlmacenado };
-  const despues = { marlta: nuevoMargen, prelta: pvpNuevo };
-  const base = { codart, desart: item.desart, tarifa, costeNeto: item.costeNeto, antes, despues };
-
+/**
+ * Snapshot previo, escritura, relectura de verificación y estado final. `soloPrecio`: la
+ * comprobación ignora MARLTA (se usa cuando solo se escribe PRELTA).
+ */
+async function escribirVerificando({ delsol, historial, base, escribir, soloPrecio, esperaMs, resumen }) {
+  const { codart, tarifa, antes, despues } = base;
   // El snapshot se guarda ANTES de escribir: si la escritura acaba en timeout o el proceso muere,
   // queda constancia de qué valores había y qué se intentó.
   const registro = await historial.registrar({ ...base, estado: 'pendiente' });
 
   let errorEscritura = null;
   try {
-    await delsol.actualizarLineaTarifa(codart, tarifa, despues.marlta, despues.prelta);
+    await escribir();
   } catch (err) {
     errorEscritura = err; // puede haberse aplicado igualmente: se comprueba abajo
   }
 
-  const filtroLinea = `ARTLTA = '${codart.replace(/'/g, "''")}' AND TARLTA = ${tarifa}`;
-  const es = (l, v) => !!l && cerca(Number(l.PRELTA), v.prelta) && cerca(Number(l.MARLTA), v.marlta);
+  const es = (l, v) => !!l && cerca(Number(l.PRELTA), v.prelta) && (soloPrecio || cerca(Number(l.MARLTA), v.marlta));
   let leida = null;
   let relecturaFallida = false;
   for (let i = 0; i < 5; i++) {
     if (i > 0) await dormir(esperaMs * 2 ** (i - 1));
     try {
-      leida = (await delsol.cargaTabla('F_LTA', filtroLinea))[0];
+      leida = (await delsol.cargaTabla('F_LTA', filtroLinea(codart, tarifa)))[0];
       relecturaFallida = false;
     } catch {
       relecturaFallida = true;
@@ -211,8 +204,7 @@ export async function aplicarMargen({ delsol, historial, solicitud, esperaMs = 6
 
   if (es(leida, despues)) {
     await historial.actualizarEstado(registro.id, 'aplicado');
-    const nuevoReal = margenReal(item.costeNeto, pvpNuevo, cfg.incluyeIva, item.ivaPct);
-    return { ...base, id: registro.id, margenReal: Math.round(nuevoReal * 100) / 100 };
+    return registro.id;
   }
   if (errorEscritura && !relecturaFallida && es(leida, antes)) {
     await historial.actualizarEstado(registro.id, 'no_aplicado');
@@ -220,8 +212,76 @@ export async function aplicarMargen({ delsol, historial, solicitud, esperaMs = 6
   }
   await historial.actualizarEstado(registro.id, 'verificacion_fallida');
   throw new ErrorDeVerificacion(
-    `No se sabe en qué estado quedó ${codart} (se intentó margen ${despues.marlta} %, PVP ${despues.prelta}). Revísalo en FactuSOL; en el Historial puedes deshacerlo.`,
+    `No se sabe en qué estado quedó ${codart} (se intentó ${resumen}). Revísalo en FactuSOL; en el Historial puedes deshacerlo.`,
   );
+}
+
+/**
+ * Aplica un nuevo MARGEN a UNA línea de tarifa. Pasos: validar, releer en fresco, comprobar que
+ * lo que vio el usuario sigue siendo cierto, escribir, releer para verificar y dejar historial.
+ */
+export async function aplicarMargen({ delsol, historial, solicitud, esperaMs = 600, tarifasEscribibles = new Set(), tarifasPorPrecio = new Set() }) {
+  const { codart, tarifa, pvpAntesEsperado, pvpNuevoEsperado, nuevoMargen: margenPedido, forzar = false } = solicitud;
+  comprobarTarifa({ tarifa, modo: 'margen', tarifasEscribibles, tarifasPorPrecio });
+  if (!Number.isFinite(margenPedido) || margenPedido < 0 || margenPedido > MARGEN_MAX) {
+    throw new ErrorDeValidacion(`El margen debe estar entre 0 y ${MARGEN_MAX} %.`);
+  }
+  if (!Number.isFinite(pvpAntesEsperado) || !Number.isFinite(pvpNuevoEsperado)) {
+    throw new ErrorDeValidacion('Faltan los PVP que viste en pantalla (actual y nuevo).');
+  }
+  const nuevoMargen = redondea2(margenPedido); // FactuSOL guarda el margen con 2 decimales
+
+  const { item, cfg } = await leerEnFresco({ delsol, codart, tarifa, pvpAntesEsperado });
+  const pvpNuevo = pvpAlmacenadoParaMargen(item.costeNeto, nuevoMargen, cfg.incluyeIva, item.ivaPct);
+  // Si el coste (o su descuento) cambió después de cargar la lista, el PVP que saldría ya no es
+  // el que el usuario confirmó: no se escribe.
+  if (!cerca(pvpNuevo, pvpNuevoEsperado)) {
+    throw new ErrorDeValidacion(
+      `El coste de ${codart} ha cambiado en FactuSOL: con ${nuevoMargen} % el PVP sería ${pvpNuevo}, no ${pvpNuevoEsperado}. Recarga la lista antes de continuar.`,
+    );
+  }
+  comprobarSalto(item, pvpNuevo, forzar);
+
+  const antes = { marlta: item.margenConfigurado, prelta: item.pvpAlmacenado };
+  const despues = { marlta: nuevoMargen, prelta: pvpNuevo };
+  const base = { tipo: 'margen', codart, desart: item.desart, tarifa, costeNeto: item.costeNeto, antes, despues };
+  const id = await escribirVerificando({
+    delsol, historial, base, esperaMs, soloPrecio: false,
+    escribir: () => delsol.actualizarLineaTarifa(codart, tarifa, despues.marlta, despues.prelta),
+    resumen: `margen ${despues.marlta} %, PVP ${despues.prelta}`,
+  });
+  const nuevoReal = margenReal(item.costeNeto, pvpNuevo, cfg.incluyeIva, item.ivaPct);
+  return { ...base, id, margenReal: Math.round(nuevoReal * 100) / 100 };
+}
+
+/**
+ * Aplica un nuevo PRECIO directo (PVP tal como se guarda en la tarifa: con IVA en la Tarifa 1) a
+ * UNA línea. Solo escribe PRELTA: el margen guardado (MARLTA) no se toca; el margen real que
+ * resulta se devuelve para mostrarlo.
+ */
+export async function aplicarPrecio({ delsol, historial, solicitud, esperaMs = 600, tarifasEscribibles = new Set(), tarifasPorPrecio = new Set() }) {
+  const { codart, tarifa, pvpAntesEsperado, pvpNuevo: precioPedido, forzar = false } = solicitud;
+  comprobarTarifa({ tarifa, modo: 'precio', tarifasEscribibles, tarifasPorPrecio });
+  if (!Number.isFinite(precioPedido) || precioPedido <= 0 || precioPedido > PRECIO_MAX) {
+    throw new ErrorDeValidacion(`El precio debe ser mayor que 0 y no pasar de ${PRECIO_MAX}.`);
+  }
+  if (Math.abs(precioPedido - redondea2(precioPedido)) > 1e-9) throw new ErrorDeValidacion('El precio admite como máximo 2 decimales.');
+  if (!Number.isFinite(pvpAntesEsperado)) throw new ErrorDeValidacion('Falta el PVP que viste en pantalla.');
+  const pvpNuevo = redondea2(precioPedido);
+
+  const { item, cfg } = await leerEnFresco({ delsol, codart, tarifa, pvpAntesEsperado });
+  comprobarSalto(item, pvpNuevo, forzar);
+
+  const antes = { marlta: item.margenConfigurado, prelta: item.pvpAlmacenado };
+  const despues = { marlta: item.margenConfigurado, prelta: pvpNuevo }; // MARLTA no se toca
+  const base = { tipo: 'precio', codart, desart: item.desart, tarifa, costeNeto: item.costeNeto, antes, despues };
+  const id = await escribirVerificando({
+    delsol, historial, base, esperaMs, soloPrecio: true,
+    escribir: () => delsol.actualizarPrecioLinea(codart, tarifa, pvpNuevo),
+    resumen: `PVP ${pvpNuevo}`,
+  });
+  const nuevoReal = margenReal(item.costeNeto, pvpNuevo, cfg.incluyeIva, item.ivaPct);
+  return { ...base, id, margenAntes: item.margenReal, margenReal: Math.round(nuevoReal * 100) / 100 };
 }
 
 /** Deshace un cambio del historial, solo si la línea sigue como la dejó ese cambio. */
@@ -229,23 +289,24 @@ export async function deshacer({ delsol, historial, id, esperaMs = 600 }) {
   const registro = historial.obtener(id);
   if (!registro || !ESTADOS_DESHACIBLES.has(registro.estado)) throw new ErrorDeValidacion('Ese cambio no se puede deshacer.');
   const { codart, tarifa, antes, despues } = registro;
-  const filtro = `ARTLTA = '${codart.replace(/'/g, "''")}' AND TARLTA = ${tarifa}`;
+  const soloPrecio = registro.tipo === 'precio';
+  const filtro = filtroLinea(codart, tarifa);
+  const coincide = (l, v) => !!l && cerca(Number(l.PRELTA), v.prelta) && (soloPrecio || cerca(Number(l.MARLTA), v.marlta));
   const actual = (await delsol.cargaTabla('F_LTA', filtro))[0];
-  const esValor = (v) => !!actual && cerca(Number(actual.PRELTA), v.prelta) && cerca(Number(actual.MARLTA), v.marlta);
-  if (esValor(antes) && registro.estado !== 'aplicado') {
+  if (coincide(actual, antes) && registro.estado !== 'aplicado') {
     // El cambio nunca llegó a aplicarse (o ya está como antes): no hay nada que escribir.
     await historial.marcarDeshecho(id);
     return { codart, tarifa, restaurado: antes };
   }
-  if (!esValor(despues)) {
+  if (!coincide(actual, despues)) {
     throw new ErrorDeValidacion(`${codart} ya no está como lo dejó ese cambio (alguien lo ha modificado después). No se deshace.`);
   }
-  await delsol.actualizarLineaTarifa(codart, tarifa, antes.marlta, antes.prelta);
+  if (soloPrecio) await delsol.actualizarPrecioLinea(codart, tarifa, antes.prelta);
+  else await delsol.actualizarLineaTarifa(codart, tarifa, antes.marlta, antes.prelta);
   let ok = false;
   for (let i = 0; i < 5 && !ok; i++) {
     if (i > 0) await dormir(esperaMs * 2 ** (i - 1));
-    const leida = (await delsol.cargaTabla('F_LTA', filtro))[0];
-    ok = !!leida && cerca(Number(leida.PRELTA), antes.prelta) && cerca(Number(leida.MARLTA), antes.marlta);
+    ok = coincide((await delsol.cargaTabla('F_LTA', filtro))[0], antes);
   }
   if (!ok) throw new ErrorDeVerificacion(`Se intentó deshacer ${codart} pero la relectura no coincide. Revísalo en FactuSOL.`);
   await historial.marcarDeshecho(id);

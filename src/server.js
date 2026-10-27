@@ -6,7 +6,7 @@ import { cargarConfig } from './config.js';
 import { DelsolClient } from './delsol.js';
 import { Historial } from './historial.js';
 import { guardarCopia } from './copias.js';
-import { ErrorDeValidacion, ErrorDeVerificacion, aplicarMargen, cargarDatos, deshacer, listaPorTarifa } from './margenes.js';
+import { ErrorDeValidacion, ErrorDeVerificacion, aplicarMargen, aplicarPrecio, cargarDatos, deshacer, listaPorTarifa } from './margenes.js';
 import { TRAMOS } from './calc.js';
 
 const config = cargarConfig();
@@ -87,7 +87,8 @@ async function manejar(req, res) {
   if (req.method === 'GET' && url.pathname === '/api/lista') {
     const tarifa = Number(url.searchParams.get('tarifa') ?? 2);
     const { items, ...resto } = listaPorTarifa(datos, tarifa);
-    return responder(res, 200, { ...resto, ejercicio: config.ejercicio, escribible: config.tarifasEscribibles.has(tarifa), cargadoEn: datos.cargadoEn, tramos: TRAMOS, tarifas: tarifasDisponibles(), items });
+    const modo = config.tarifasPorPrecio.has(tarifa) ? 'precio' : 'margen'; // cómo se edita esta tarifa
+    return responder(res, 200, { ...resto, ejercicio: config.ejercicio, escribible: config.tarifasEscribibles.has(tarifa), modo, cargadoEn: datos.cargadoEn, tramos: TRAMOS, tarifas: tarifasDisponibles(), items });
   }
   if (req.method === 'POST' && url.pathname === '/api/recargar') {
     await recargar();
@@ -99,9 +100,21 @@ async function manejar(req, res) {
   if (req.method === 'POST' && url.pathname === '/api/aplicar') {
     const cuerpo = await leerJson(req);
     if (!datos.copiaOk) throw new ErrorDeValidacion('No hay copia de seguridad de las tarifas: recarga los datos y revisa la consola del programa antes de escribir.');
-    const resultado = await enCola(() => aplicarMargen({ delsol, historial, solicitud: cuerpo, tarifasEscribibles: config.tarifasEscribibles }));
+    const resultado = await enCola(() =>
+      aplicarMargen({ delsol, historial, solicitud: cuerpo, tarifasEscribibles: config.tarifasEscribibles, tarifasPorPrecio: config.tarifasPorPrecio }),
+    );
     const linea = datos.lineas.find((l) => l.ARTLTA === resultado.codart && Number(l.TARLTA) === resultado.tarifa);
     if (linea) Object.assign(linea, { MARLTA: resultado.despues.marlta, PRELTA: resultado.despues.prelta });
+    return responder(res, 200, resultado);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/aplicar-precio') {
+    const cuerpo = await leerJson(req);
+    if (!datos.copiaOk) throw new ErrorDeValidacion('No hay copia de seguridad de las tarifas: recarga los datos y revisa la consola del programa antes de escribir.');
+    const resultado = await enCola(() =>
+      aplicarPrecio({ delsol, historial, solicitud: cuerpo, tarifasEscribibles: config.tarifasEscribibles, tarifasPorPrecio: config.tarifasPorPrecio }),
+    );
+    const linea = datos.lineas.find((l) => l.ARTLTA === resultado.codart && Number(l.TARLTA) === resultado.tarifa);
+    if (linea) linea.PRELTA = resultado.despues.prelta; // MARLTA no se toca
     return responder(res, 200, resultado);
   }
   if (req.method === 'POST' && url.pathname === '/api/deshacer') {

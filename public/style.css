@@ -72,6 +72,7 @@ main { padding: 18px 24px 40px; max-width: 1500px; margin: 0 auto; }
 .accions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .check { display: flex; gap: 6px; align-items: center; color: var(--tinta-2); }
 .massiu { display: flex; gap: 6px; align-items: center; color: var(--tinta-2); }
+.massiu[hidden] { display: none; }
 .massiu input { width: 64px; text-align: right; }
 
 .taula-marc { background: var(--panel); border: 1px solid var(--linia); border-radius: var(--radi); overflow: auto; max-height: calc(100vh - 250px); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ErrorDeEscritura, ErrorDeValidacion, ErrorDeVerificacion, aplicarMargen, deshacer, listaPorTarifa, sumarStock } from '../src/margenes.js';
+import { ErrorDeEscritura, ErrorDeValidacion, ErrorDeVerificacion, aplicarMargen, aplicarPrecio, deshacer, listaPorTarifa, sumarStock } from '../src/margenes.js';
 import { pvpAlmacenadoParaMargen } from '../src/calc.js';
 
 // FactuSOL simulado en memoria: mismas tablas y columnas que la API real.
@@ -26,6 +26,12 @@ function crearFactusol({ articulos, lineas, tarifas, escritura = 'ok' }) {
       escrituras.push({ codart, tarifa, marlta, prelta });
       if (escritura === 'falla') throw new Error('timeout');
       if (escritura !== 'ignora') Object.assign(lineas.find((l) => l.ARTLTA === codart && l.TARLTA === tarifa), { MARLTA: marlta, PRELTA: prelta });
+      if (escritura === 'aplica-y-falla') throw new Error('timeout');
+    },
+    async actualizarPrecioLinea(codart, tarifa, prelta) {
+      escrituras.push({ codart, tarifa, prelta, soloPrecio: true });
+      if (escritura === 'falla') throw new Error('timeout');
+      if (escritura !== 'ignora') Object.assign(lineas.find((l) => l.ARTLTA === codart && l.TARLTA === tarifa), { PRELTA: prelta });
       if (escritura === 'aplica-y-falla') throw new Error('timeout');
     },
   };
