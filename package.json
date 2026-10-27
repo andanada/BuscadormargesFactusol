@@ -1,0 +1,14 @@
+{
+  "name": "factusol-margenes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Panel local para revisar y corregir los márgenes por debajo del 20% en FactuSOL.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}

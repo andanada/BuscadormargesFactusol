@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ca">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marges Factusol</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="marca">
+      <span class="logo" aria-hidden="true">%</span>
+      <div>
+        <h1>Marges per sota del 20 %</h1>
+        <p class="sub" id="sub">Carregant…</p>
+      </div>
+    </div>
+    <div class="controls">
+      <label class="camp"><span>Tarifa</span><select id="tarifa"></select></label>
+      <label class="camp cerca"><span>Cerca</span><input id="cerca" type="search" placeholder="Codi o nom de l'article"></label>
+      <button id="recarregar" class="secundari" type="button">Recarregar de Factusol</button>
+    </div>
+  </header>
+
+  <nav class="pestanyes" id="pestanyes" role="tablist"></nav>
+
+  <main>
+    <div id="avis" class="avis" hidden></div>
+    <div id="progres" class="avis progres" hidden>
+      <span id="progresText"></span>
+      <button id="atura" class="secundari petit" type="button">Atura després d'aquest</button>
+    </div>
+    <section id="vistaLlista">
+      <div class="eina">
+        <div class="resum" id="resum"></div>
+        <div class="accions">
+          <label class="check"><input type="checkbox" id="totes"> Marca tots els visibles</label>
+          <span class="massiu">Posa el mateix marge als marcats
+            <input id="massiuValor" type="text" inputmode="decimal" value="20" aria-label="Marge per als marcats"> %
+            <button id="massiuAplicar" class="secundari petit" type="button">Omple</button>
+          </span>
+          <button id="aplicarMarcats" class="primari" type="button" disabled>Aplica els marcats</button>
+        </div>
+      </div>
+      <div class="taula-marc">
+        <table id="taula">
+          <thead>
+            <tr>
+              <th class="c"></th>
+              <th>Codi</th>
+              <th>Article</th>
+              <th class="n" title="Estoc disponible: suma de tots els magatzems (F_STO)">Estoc</th>
+              <th class="n" title="PCOART: preu de cost abans del descompte de compra">Cost brut</th>
+              <th class="n" title="Descompte de compra de la fitxa (DT0ART, DT1ART, DT2ART)">Dte. fitxa</th>
+              <th class="n">Cost net</th>
+              <th class="n">PVP actual</th>
+              <th class="n">Marge real</th>
+              <th class="n" title="Marge guardat a Factusol (MARLTA)">Marge config.</th>
+              <th class="n">Nou marge %</th>
+              <th class="n">Nou PVP</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cos"></tbody>
+        </table>
+      </div>
+      <p class="buit" id="buit" hidden>No hi ha articles en aquest tram.</p>
+    </section>
+
+    <section id="vistaHistorial" hidden>
+      <div class="taula-marc">
+        <table>
+          <thead><tr><th>Data</th><th>Codi</th><th>Article</th><th>Tarifa</th><th class="n">Marge</th><th class="n">PVP</th><th>Estat</th><th></th></tr></thead>
+          <tbody id="cosHistorial"></tbody>
+        </table>
+      </div>
+      <p class="buit" id="buitHistorial" hidden>Encara no has canviat res des d'aquest programa.</p>
+    </section>
+  </main>
+
+  <dialog id="confirmacio">
+    <form method="dialog">
+      <h2 id="confTitol">Confirma els canvis</h2>
+      <p class="sub">S'escriuran directament a Factusol. Cada canvi es verifica i es pot desfer des de l'historial.</p>
+      <div class="taula-marc petita"><table><thead><tr><th>Article</th><th class="n">PVP</th><th class="n">Marge</th></tr></thead><tbody id="confCos"></tbody></table></div>
+      <label class="check revisat" id="confRevisat" hidden><input type="checkbox" id="confCheck"> He revisat tota la llista i els preus nous són correctes</label>
+      <div class="botons">
+        <button value="cancel" class="secundari">Cancel·la</button>
+        <button value="ok" id="confOk" class="primari">Escriu a Factusol</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
